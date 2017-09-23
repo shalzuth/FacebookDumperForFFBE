@@ -19,11 +19,50 @@ namespace FacebookDumperForFFBE
         String ConfirmUrl = "https://m.facebook.com/v2.8/dialog/oauth/confirm";
         String AcceptUrl = "https://m.facebook.com/v2.8/dialog/oauth/read";
         String UserIdUrl = "https://graph.facebook.com/v2.8/me?access_token=AccessToken&debug=info&fields=id%2Cname%2Cemail&format=json&include_headers=false&sdk=ios";
-        public Facebook(String email, String password)
+        String RecoveryUrl = "https://m.facebook.com/login/checkpoint";
+        public Boolean TwoFactorAuth = false;
+        String loginHtml = "";
+        public Facebook()
+        {
+        }
+        public void Login(String email, String password)
         {
             cookies.Add(new CookieCollection());
             var get = GetData(FacebookUrl);
-            var post = PostData(LoginUrl, String.Format("email={0}&pass={1}", email, password));
+            var loginHtml = PostData(LoginUrl, String.Format("email={0}&pass={1}", email, password));
+            if (loginHtml.Contains("checkpointSubmitButton"))
+                TwoFactorAuth = true;
+        }
+        public void FinishTwoFactorAuth(String recoveryCode)
+        {
+            var code = Console.ReadLine();
+            var tokenSearch = "\"dtsg\":{\"token\":\"";
+            var token = loginHtml.Substring(loginHtml.IndexOf(tokenSearch) + tokenSearch.Length);
+            token = token.Substring(0, token.IndexOf("\""));
+            var nhSearch = "name=\"nh\" value=\"";
+            var nh = loginHtml.Substring(loginHtml.IndexOf(nhSearch) + nhSearch.Length);
+            nh = nh.Substring(0, nh.IndexOf("\""));
+            NameValueCollection parameters = HttpUtility.ParseQueryString(String.Empty);
+            parameters.Add("fb_dtsg", token);
+            parameters.Add("checkpoint_data", "");
+            parameters.Add("approvals_code", code);
+            parameters.Add("codes_submitted", "1");
+            parameters.Add("submit[Submit Code]", "Submit Code");
+            parameters.Add("nh", nh);
+            var p = parameters.ToString();
+            var recovery = PostData(RecoveryUrl, p);
+            parameters = HttpUtility.ParseQueryString(String.Empty);
+            parameters.Add("fb_dtsg", token);
+            parameters.Add("checkpoint_data", "");
+            parameters.Add("name_action_selected", "dont_save");
+            parameters.Add("submit[Continue]", "Continue");
+            parameters.Add("nh", nh);
+            p = parameters.ToString();
+            var dontsavedevice = PostData(RecoveryUrl, p);
+            var login = GetData("https://m.facebook.com/home.php");
+        }
+        public void AllowFFBE()
+        {
             var confirmHtml = GetData(AuthorizeUrl);
             var accessTokenHtml = PostData(ConfirmUrl, GetConfirmTable(confirmHtml));
             try
@@ -75,8 +114,6 @@ namespace FacebookDumperForFFBE
         }
         String PostData(String url, String data)
         {
-            //if (data == null)
-            //    url = url.Replace(".com", ".com:80");
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
             request.CookieContainer = cookies;
             request.UserAgent = UserAgent;
